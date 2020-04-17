@@ -1,48 +1,47 @@
-import tkinter as tk
+import socket
+import os
 
-class Application(tk.Frame):
-    '''
-        back: tk.Frame()
-        hi_there: tk.Button()
-        quit: tk.Button()
-    '''
-    def __init__(self, master=None):
-        super().__init__(master)
-        self.master = master
-       # self.create_main_window()
-        self.create_widgets()
 
-    def create_widgets(self):
-        self.back_frame = tk.Frame(self.master, width=500, height=500)
-        self.back_frame.grid()
-
-        self.file_name_label = tk.Label(self.back_frame, text="File Name")
-        self.file_name_label.grid(row=0, column=0)
-
-        self.search_bar_entry = tk.Entry(self.back_frame)
-        self.search_bar_entry.grid(row=0, column=1)
-
-        self.search_bar_button = tk.Button(self.back_frame, text="Search")
-        self.search_bar_button.grid(row=0, column=3)
-
-        self.search_list = tk.Listbox(self.back_frame, width=40, height=20)
-        self.search_list.grid(row=1, column=0, columnspan=4)
-        self.search_list.insert(0, "movie.mp4")
-
-        self.download_button = tk.Button(self.back_frame,  text = "Download File")
-        self.download_button.grid(row=2, column=1)
-
-        
-
-    def say_hi(self):
-        print("hi there, everyone!")
-
+def process_connection(conn, addr):
+    pass
 
 def main():
-    root = tk.Tk()
-    app = Application(master=root)
-    app.mainloop()
+    print("Launching File Tracker(FT) Server")
+    port_number = input("Please enter the port number: ")
+
+    while not port_number.isnumeric():
+        port_number = input("Please enter a number e.g. 9999")
+
+    port_number = int(port_number)
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('', port_number))
+
+    hostname = socket.gethostname()
+    ip_address = socket.gethostbyname(hostname)
+    print("===========================")
+    print(f"IP Address: {ip_address}")
+    print(f"Port: {port_number}")
+    print("\nPlease use the information above to connect to FT Server")
+    print("===========================")
+
+    try:
+        while True:
+            print("Waiting for connection...")
+            s.listen()
+            conn, addr = s.accept()
+            with conn:
+                process_connection(conn, addr)
+
+        s.close()
+
+    except:
+        s.close()
+        print("Socket is closed")
+    
+
 
 
 if __name__ == "__main__":
-    main()    
+    main()
