@@ -3,7 +3,15 @@ import os
 
 
 def process_connection(conn, addr):
-    pass
+    print("Connected by ", addr)
+    while conn:
+        data = conn.recv(1024)
+        if not data or len(data) == 0:
+            print("No data")
+            break
+
+        data = data.decode("utf-8")
+        print("Recieved data: ", data)
 
 def main():
     print("Launching File Tracker(FT) Server")

@@ -1,3 +1,7 @@
+import socket
+import os
+import datetime
+
 import tkinter as tk
 from tkinter import END, ACTIVE
 from tkinter import ttk
@@ -5,7 +9,7 @@ from tkinter import ttk
 FILE_TRACKER_IP = '192.168.0.0'
 FILE_TRACKER_PORT = '9999'
 
-CLIENT_PORT = '8888'
+CLIENT_PORT = 8888
 
 
 class Application(tk.Frame):
@@ -18,8 +22,49 @@ class Application(tk.Frame):
         self.master = master
         self.create_widgets()
 
+    def is_valid_ip_port(self, ip_line, port_line):
+        return True
+
+    def get_files_info(self):
+        target_directory = os.getcwd() + '/files'
+        entries = os.listdir(target_directory)
+        
+        for entry in entries:
+            entry_full_dir = target_directory + '/' + entry
+            entry_size = os.path.getsize(entry_full_dir)
+            entry_modified = datetime.datetime.fromtimestamp(os.path.getmtime(entry_full_dir))
+            entry_modified = entry_modified.strftime("%d/%m/%y")
+            print(entry_full_dir)
+            print(entry_size)
+            print(entry_modified)
+
     def connect_to_ft(self):
-        pass
+        entry_line = self.ft_server_entry.get()
+        ip_line, port_line = entry_line.split(':')
+
+        if self.is_valid_ip_port(ip_line, port_line):
+            FILE_TRACKER_IP = ip_line
+            FILE_TRACKER_PORT = port_line
+
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.socket.bind(('', CLIENT_PORT))
+
+            try:
+                self.get_files_info()
+
+                self.socket.connect((FILE_TRACKER_IP, int(FILE_TRACKER_PORT)))
+                self.socket.send("HELLO".encode())
+            except:
+                self.socket.close()
+                print("Socket is closed")
+
+        else:
+            #TODO(ginet) show error message usig self.ft_connection_message
+            pass
+
+        
+
 
     def disconnect_from_ft(self):
         pass
@@ -43,9 +88,12 @@ class Application(tk.Frame):
             self.ft_back_frame, text="Disconnect", command=self.disconnect_from_ft)
         self.ft_server_disconnect_button.grid(row=1, column=1)
 
+        self.ft_connection_message = tk.Label(self.ft_back_frame, text="")
+        self.ft_connection_message.grid(row=2, column=0, columnspan=2)
+
         self.first_separator = ttk.Separator(
             self.ft_back_frame, orient="horizontal")
-        self.first_separator.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.first_separator.grid(row=3, column=0, columnspan=2, sticky="ew")
 
     def build_search_widgets(self):
         self.back_frame = tk.Frame(self.master, width=500, height=500)
