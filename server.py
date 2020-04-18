@@ -15,6 +15,11 @@ def deserialize_files(files):
     return result[:-1]
 
 
+def append_ip_and_port(files, addr):
+    for file in files:
+        file.append(addr[0])
+        file.append(addr[1])
+
 def process_connection(conn, addr):
     while conn:
         data = conn.recv(1024)
@@ -25,13 +30,14 @@ def process_connection(conn, addr):
         data = data.decode("utf-8")
         print(f"Recieved data: {data} from: {addr}")
 
-        if data == "HELLO":
+        if data.startswith("HELLO"):
             conn.send(HELLO_MESSAGE_RESPONSE.encode())
             files = conn.recv(1024).decode("utf-8")
 
             files_to_store = deserialize_files(files)
 
             if (len(files_to_store) > 0):
+                append_ip_and_port(files_to_store, addr)
                 print(f"{len(files_to_store)} file(-s) from {addr} has been stored")
                 db[addr] = files_to_store
             else:
@@ -39,7 +45,7 @@ def process_connection(conn, addr):
 
             conn.close()
             break
-        elif data == "BYE":
+        elif data.startswith("BYE"):
             result = db.pop(addr, None)
             if result:
                 print(f"Entry {addr} removed from storage")
@@ -47,6 +53,33 @@ def process_connection(conn, addr):
                 print(f"Entry {addr} is not found in storage")
             conn.close()
             break
+        elif data.startswith("SEARCH"):
+            file_name = data[7:]
+
+            files_to_send = []
+            for key in db.keys():
+                entry = db[key]
+                for file_data in entry:
+                    print(f"File Data: {file_data}")
+                    if file_name in file_data:
+                        files_to_send.append(file_data)
+            
+            if len(files_to_send) == 0:
+                conn.send("NOT FOUND".encode())
+            else:
+                message = "FOUND:"
+
+                for file_info in files_to_send:
+                    for file_data in file_info:
+                        message = f"{message}{file_data},"
+                    message = message + '\n'
+                
+                conn.send(message.encode())
+            conn.close()
+            break
+                    
+            
+
         else:
             # TODO(ginet) respond to other messages
             print("Not a HELLO message")

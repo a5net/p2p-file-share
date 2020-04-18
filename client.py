@@ -3,25 +3,97 @@ import os
 import socket
 import tkinter as tk
 from tkinter import ACTIVE, END, ttk
+import threading
 
-CLIENT_PORT = 8888
+class ListeningThread(threading.Thread):
+    def __init__(self, socket, port_number, control_flag):
+        threading.Thread.__init__(self)
+        self.socket = socket
+        self.port_number = port_number
+        self.control_flag = control_flag
+
+    def process_request(self, conn, addr):
+        while conn and self.control_flag:
+            data = conn.recv(1024)
+            if not data or len(data) == 0:
+                print("No data")
+                break
+
+            if "DOWNLOAD" in data:
+                command, file_info  = data.decode("utf-8").split(':')
+                file_name, file_type, file_size = file_info.split(',')
+
+                target_directory = os.getcwd() + '/files'
+                available_files = os.listdir(target_directory)
+
+                if f"{file_name}.{file_type}" in available_files:
+                    full_directory = target_directory + '/' + file_name + '.' + file_type
+                    f = open(full_directory, 'rb')
+                    buffer = f.read(1024)
+                    conn.send("FILE: ".encode())
+                    while buffer:
+                        conn.send(buffer)
+                        buffer = f.read(1024)
+                    f.close()
+                    conn.shutdown()
+                    conn.close()
+            
+
+    def run(self):
+        print("Thread created")
+
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.bind(('', self.port_number))
+
+        try:
+            while self.control_flag:
+                self.socket.listen()
+                conn, addr = self.socket.accept()
+                with conn:
+                    self.process_request(conn, addr)
+
+            self.socket.close()
+        except KeyboardInterrupt:
+            self.socket.close()
+
+        print("Thread is terminated")
+
+    def get_host_ip(self):
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        return ip_address
+
+    def stop(self):
+        self.control_flag = False
+        self.killer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.killer_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.killer_socket.bind(('', self.port_number + 666))
+        self.killer_socket.connect((self.get_host_ip(), self.port_number))
+        self.killer_socket.close()
+
 
 
 class Application(tk.Frame):
-    '''
-
-    '''
 
     def __init__(self, master=None):
+        # GUI Interface builder
         super().__init__(master)
         self.master = master
         self.create_widgets()
 
+        # Default values for TCP Connection
         self.FILE_TRACKER_IP = '127.0.1.1'
         self.FILE_TRACKER_PORT = '9999'
+        self.CLIENT_PORT = 8888
+
+        # Thread defaults for listening thread
+        self.control_flag = True
+
 
     def is_valid_ip_port(self, ip_line, port_line):
         return True
+
 
     def get_files_info(self):
         target_directory = os.getcwd() + '/files'
@@ -39,6 +111,7 @@ class Application(tk.Frame):
 
         return result
 
+
     def get_connection_message_for_ft(self, files):
         message = ""
 
@@ -49,6 +122,7 @@ class Application(tk.Frame):
 
         return message
 
+
     def connect_to_ft(self):
         entry_line = self.ft_server_entry.get()
         ip_line, port_line = entry_line.split(':')
@@ -56,10 +130,11 @@ class Application(tk.Frame):
         if self.is_valid_ip_port(ip_line, port_line):
             self.FILE_TRACKER_IP = ip_line
             self.FILE_TRACKER_PORT = port_line
+            self.CLIENT_PORT = int(self.ft_server_my_port_entry.get())
 
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.bind(('', CLIENT_PORT))
+            self.socket.bind(('', self.CLIENT_PORT))
 
             try:
                 self.socket.connect((self.FILE_TRACKER_IP, int(self.FILE_TRACKER_PORT)))
@@ -80,6 +155,9 @@ class Application(tk.Frame):
                     print("Not a HI message")
                 
                 self.socket.close()
+                self.listening_thread = ListeningThread(self.socket, self.CLIENT_PORT, self.control_flag)
+                self.listening_thread.start()
+
 
             except:
                 self.socket.close()
@@ -89,19 +167,18 @@ class Application(tk.Frame):
             # TODO(ginet) show error message usig self.ft_connection_message
             pass
 
+
     def disconnect_from_ft(self):
+        self.listening_thread.stop()
+        self.listening_thread.join()
+        
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print("Recreated socket")
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.socket.bind(('', CLIENT_PORT))
-        print("Binded to the port")
+        self.socket.bind(('', self.CLIENT_PORT))
 
         try:
-            print(f"Connecting to {self.FILE_TRACKER_IP} at port {self.FILE_TRACKER_PORT}..")
             self.socket.connect((self.FILE_TRACKER_IP, int(self.FILE_TRACKER_PORT)))
-            print("Connected to server")
             self.socket.send("BYE".encode())
-            print("Send a message")
             self.socket.close()
 
             self.ft_connection_message['text'] = 'Disconnected from FT Server'
@@ -119,27 +196,34 @@ class Application(tk.Frame):
         self.ft_back_frame.grid()
 
         self.ft_server_connection_text = tk.Label(
-            self.ft_back_frame, text="IP Address(ex: 10.10.10.1:3000)")
+            self.ft_back_frame, text="FT Server(ex: 10.10.10.1:3000)")
         self.ft_server_connection_text.grid(row=0, column=0)
 
         self.ft_server_entry = tk.Entry(self.ft_back_frame)
         self.ft_server_entry.grid(row=0, column=1)
 
+        self.ft_server_my_port_text = tk.Label(self.ft_back_frame, text="My port number(ex: 8888)")
+        self.ft_server_my_port_text.grid(row=1, column=0)
+
+        self.ft_server_my_port_entry = tk.Entry(self.ft_back_frame)
+        self.ft_server_my_port_entry.grid(row=1, column=1)
+
         self.ft_server_connection_button = tk.Button(
             self.ft_back_frame, text="Connect", command=self.connect_to_ft)
-        self.ft_server_connection_button.grid(row=1, column=0)
+        self.ft_server_connection_button.grid(row=2, column=0)
 
         self.ft_server_disconnect_button = tk.Button(
             self.ft_back_frame, text="Disconnect", command=self.disconnect_from_ft, state='disabled')
-        self.ft_server_disconnect_button.grid(row=1, column=1)
+        self.ft_server_disconnect_button.grid(row=2, column=1)
 
         self.ft_connection_message = tk.Label(
             self.ft_back_frame, text="No connection")
-        self.ft_connection_message.grid(row=2, column=0, columnspan=2)
+        self.ft_connection_message.grid(row=3, column=0, columnspan=2)
 
         self.first_separator = ttk.Separator(
             self.ft_back_frame, orient="horizontal")
-        self.first_separator.grid(row=3, column=0, columnspan=2, sticky="ew")
+        self.first_separator.grid(row=4, column=0, columnspan=2, sticky="ew")
+
 
     def build_search_widgets(self):
         self.back_frame = tk.Frame(self.master, width=500, height=500)
@@ -162,9 +246,11 @@ class Application(tk.Frame):
             self.back_frame,  text="Download File")
         self.download_button.grid(row=2, column=1)
 
+
     def create_widgets(self):
         self.build_ft_server_widgets()
         self.build_search_widgets()
+
 
     def search_button_action(self):
         entry_value = self.search_bar_entry.get()
@@ -177,8 +263,51 @@ class Application(tk.Frame):
             self.search_list.insert(row, file)
             row = row + 1
 
+    def deserialize_files(self, files):
+        files = files.split('\n')
+        result = []
+        for file_config in files:
+            result.append(file_config.split(','))
+        return result[:-1]
+
+
     def ft_server_dowload_request(self, file_name):
-        return [file_name + '.tmp', file_name + '.mp4', file_name+'.txt']
+        self.listening_thread.stop()
+        self.listening_thread.join()
+        
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.bind(('', self.CLIENT_PORT))
+
+        try:
+            self.socket.connect(
+                (self.FILE_TRACKER_IP, int(self.FILE_TRACKER_PORT)))
+            self.socket.send(f"SEARCH:{file_name}".encode())
+
+            data = self.socket.recv(1024).decode("utf-8")
+            print(
+                f"Recieved: {data} from: {self.FILE_TRACKER_IP}:{self.FILE_TRACKER_PORT}")
+
+            if data == "NOT FOUND":
+                self.control_flag = True
+                self.listening_thread = ListeningThread(
+                    self.socket, self.CLIENT_PORT, self.control_flag)
+                self.listening_thread.start()
+                return []
+            
+            print("Raw data: " + data)
+            files = self.deserialize_files(data[6:])
+
+
+
+        except KeyboardInterrupt:
+            self.socket.close()
+
+        self.control_flag = True
+        self.listening_thread = ListeningThread(
+            self.socket, self.CLIENT_PORT, self.control_flag)
+        self.listening_thread.start()
+        return files
 
 
 def main():
