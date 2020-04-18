@@ -19,7 +19,7 @@ class ListeningThread(threading.Thread):
                 print("No data")
                 break
 
-            if "DOWNLOAD" in data:
+            if b"DOWNLOAD" in data:
                 command, file_info  = data.decode("utf-8").split(':')
                 file_name, file_type, file_size = file_info.split(',')
 
@@ -31,12 +31,15 @@ class ListeningThread(threading.Thread):
                     f = open(full_directory, 'rb')
                     buffer = f.read(1024)
                     conn.send("FILE: ".encode())
+                    print(f"Sending file located at: {full_directory}")
                     while buffer:
+                        print(f"Sending {file_name + '.' + file_type} to {addr}")
                         conn.send(buffer)
                         buffer = f.read(1024)
+                    print(f"File was sent successfully, closing connection with {addr}")
                     f.close()
-                    conn.shutdown()
                     conn.close()
+                    break
             
 
     def run(self):
@@ -243,8 +246,61 @@ class Application(tk.Frame):
         self.search_list.grid(row=1, column=0, columnspan=4)
 
         self.download_button = tk.Button(
-            self.back_frame,  text="Download File")
+            self.back_frame,  text="Download File", command=self.download_selected_file)
         self.download_button.grid(row=2, column=1)
+
+
+    def download_selected_file(self):
+        self.download_button['state'] = 'disable'
+
+        selected = self.search_list.get(ACTIVE)
+
+        if selected is None:
+            return
+
+        ip_address = selected[4]
+        port_number = int(selected[5])
+
+        file_name = selected[0]
+        file_type = selected[1]
+        file_size = selected[3]
+
+        self.listening_thread.stop()
+        self.listening_thread.join()
+
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.bind(('', self.CLIENT_PORT))
+
+        try:
+            self.socket.connect((ip_address, port_number))
+            self.socket.send(
+                f"DOWNLOAD:{file_name},{file_type},{file_size}".encode())
+
+            output_file_name = file_name + '.' + file_type
+            f = open("downloads/" + output_file_name, 'wb')
+            buffer = self.socket.recv(1024)[6:]
+
+            first_part = True
+            while buffer or first_part:
+                print(f"Recieving {file_name + '.' + file_type} from {ip_address + ':' + str(port_number)}")
+                f.write(buffer)
+                buffer = self.socket.recv(1024)
+                first_part = False
+            print("File Recieved! Saving the file")
+            f.close()
+
+        except:
+            pass
+
+        self.socket.close()
+        
+        self.control_flag = True
+        self.listening_thread = ListeningThread(
+            self.socket, self.CLIENT_PORT, self.control_flag)
+        self.listening_thread.start()
+
+        self.download_button['state'] = 'active'
 
 
     def create_widgets(self):
@@ -274,7 +330,7 @@ class Application(tk.Frame):
     def ft_server_dowload_request(self, file_name):
         self.listening_thread.stop()
         self.listening_thread.join()
-        
+
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(('', self.CLIENT_PORT))
@@ -297,8 +353,6 @@ class Application(tk.Frame):
             
             print("Raw data: " + data)
             files = self.deserialize_files(data[6:])
-
-
 
         except KeyboardInterrupt:
             self.socket.close()

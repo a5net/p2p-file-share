@@ -17,8 +17,9 @@ def deserialize_files(files):
 
 def append_ip_and_port(files, addr):
     for file in files:
-        file.append(addr[0])
-        file.append(addr[1])
+        file[-1] = addr[0]
+        file.append(str(addr[1]))
+
 
 def process_connection(conn, addr):
     while conn:
@@ -70,16 +71,13 @@ def process_connection(conn, addr):
                 message = "FOUND:"
 
                 for file_info in files_to_send:
-                    for file_data in file_info:
-                        message = f"{message}{file_data},"
-                    message = message + '\n'
+                    print(file_info)
+                    file_data = ",".join(file_info)
+                    message = f"{message}{file_data}\n"
                 
                 conn.send(message.encode())
             conn.close()
             break
-                    
-            
-
         else:
             # TODO(ginet) respond to other messages
             print("Not a HELLO message")
