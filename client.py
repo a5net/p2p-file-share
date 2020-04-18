@@ -1,13 +1,8 @@
-import socket
-import os
 import datetime
-
+import os
+import socket
 import tkinter as tk
-from tkinter import END, ACTIVE
-from tkinter import ttk
-
-FILE_TRACKER_IP = '192.168.0.0'
-FILE_TRACKER_PORT = '9999'
+from tkinter import ACTIVE, END, ttk
 
 CLIENT_PORT = 8888
 
@@ -22,6 +17,9 @@ class Application(tk.Frame):
         self.master = master
         self.create_widgets()
 
+        self.FILE_TRACKER_IP = '127.0.1.1'
+        self.FILE_TRACKER_PORT = '9999'
+
     def is_valid_ip_port(self, ip_line, port_line):
         return True
 
@@ -29,15 +27,16 @@ class Application(tk.Frame):
         target_directory = os.getcwd() + '/files'
         entries = os.listdir(target_directory)
         result = []
-        
+
         for entry in entries:
             entry_full_dir = target_directory + '/' + entry
             entry_size = os.path.getsize(entry_full_dir)
-            entry_modified = datetime.datetime.fromtimestamp(os.path.getmtime(entry_full_dir))
+            entry_modified = datetime.datetime.fromtimestamp(
+                os.path.getmtime(entry_full_dir))
             entry_modified = entry_modified.strftime("%d/%m/%y")
             entry_name, entry_type = entry.split('.')
             result.append([entry_name, entry_type, entry_size, entry_modified])
-        
+
         return result
 
     def get_connection_message_for_ft(self, files):
@@ -49,26 +48,25 @@ class Application(tk.Frame):
             message = message + '\n'
 
         return message
-        
 
     def connect_to_ft(self):
         entry_line = self.ft_server_entry.get()
         ip_line, port_line = entry_line.split(':')
 
         if self.is_valid_ip_port(ip_line, port_line):
-            FILE_TRACKER_IP = ip_line
-            FILE_TRACKER_PORT = port_line
+            self.FILE_TRACKER_IP = ip_line
+            self.FILE_TRACKER_PORT = port_line
 
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.socket.bind(('', CLIENT_PORT))
 
             try:
-                self.socket.connect((FILE_TRACKER_IP, int(FILE_TRACKER_PORT)))
+                self.socket.connect((self.FILE_TRACKER_IP, int(self.FILE_TRACKER_PORT)))
                 self.socket.send("HELLO".encode())
 
                 data = self.socket.recv(1024).decode("utf-8")
-                print(f"Recieved: {data}\n Length: {len(data)}")
+                print(f"Recieved: {data} from: {self.FILE_TRACKER_IP}:{self.FILE_TRACKER_PORT}")
 
                 if data == "HI":
                     files = self.get_files_info()
@@ -77,25 +75,44 @@ class Application(tk.Frame):
                     self.ft_connection_message['text'] = "Connected to FT Server"
                     self.ft_connection_message['fg'] = "green"
                     self.ft_server_connection_button['state'] = "disabled"
-
+                    self.ft_server_disconnect_button['state'] = "normal"
                 else:
                     print("Not a HI message")
-
+                
+                self.socket.close()
 
             except:
                 self.socket.close()
                 print("Socket is closed")
 
         else:
-            #TODO(ginet) show error message usig self.ft_connection_message
+            # TODO(ginet) show error message usig self.ft_connection_message
             pass
 
-        
-
-
     def disconnect_from_ft(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print("Recreated socket")
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.bind(('', CLIENT_PORT))
+        print("Binded to the port")
+
+        try:
+            print(f"Connecting to {self.FILE_TRACKER_IP} at port {self.FILE_TRACKER_PORT}..")
+            self.socket.connect((self.FILE_TRACKER_IP, int(self.FILE_TRACKER_PORT)))
+            print("Connected to server")
+            self.socket.send("BYE".encode())
+            print("Send a message")
+            self.socket.close()
+
+            self.ft_connection_message['text'] = 'Disconnected from FT Server'
+            self.ft_connection_message['fg'] = 'black'
+            self.ft_server_connection_button['state'] = 'normal'
+            self.ft_server_disconnect_button['state'] = 'disable'
+
+        except KeyboardInterrupt:
+            self.socket.close()
+            print("Socket is closed")
         
-        pass
 
     def build_ft_server_widgets(self):
         self.ft_back_frame = tk.Frame(self.master, width=500, height=300)
@@ -113,10 +130,11 @@ class Application(tk.Frame):
         self.ft_server_connection_button.grid(row=1, column=0)
 
         self.ft_server_disconnect_button = tk.Button(
-            self.ft_back_frame, text="Disconnect", command=self.disconnect_from_ft)
+            self.ft_back_frame, text="Disconnect", command=self.disconnect_from_ft, state='disabled')
         self.ft_server_disconnect_button.grid(row=1, column=1)
 
-        self.ft_connection_message = tk.Label(self.ft_back_frame, text="No connection")
+        self.ft_connection_message = tk.Label(
+            self.ft_back_frame, text="No connection")
         self.ft_connection_message.grid(row=2, column=0, columnspan=2)
 
         self.first_separator = ttk.Separator(

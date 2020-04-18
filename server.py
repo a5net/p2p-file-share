@@ -4,7 +4,7 @@ import os
 HELLO_MESSAGE = "HELLO"
 HELLO_MESSAGE_RESPONSE = "HI"
 
-db = dict() # Create empty dictionary (tuple -> list[int])
+db = dict()  # Create empty dictionary (tuple -> list[int])
 
 
 def deserialize_files(files):
@@ -28,7 +28,7 @@ def process_connection(conn, addr):
         if data == "HELLO":
             conn.send(HELLO_MESSAGE_RESPONSE.encode())
             files = conn.recv(1024).decode("utf-8")
-            
+
             files_to_store = deserialize_files(files)
 
             if (len(files_to_store) > 0):
@@ -39,10 +39,16 @@ def process_connection(conn, addr):
 
             conn.close()
             break
-            
-
+        elif data == "BYE":
+            result = db.pop(addr, None)
+            if result:
+                print(f"Entry {addr} removed from storage")
+            else:
+                print(f"Entry {addr} is not found in storage")
+            conn.close()
+            break
         else:
-            #TODO(ginet) respond to other messages
+            # TODO(ginet) respond to other messages
             print("Not a HELLO message")
             conn.close()
             break
@@ -82,8 +88,6 @@ def main():
     except KeyboardInterrupt:
         s.close()
         print("Socket is closed")
-    
-
 
 
 if __name__ == "__main__":
