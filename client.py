@@ -28,15 +28,28 @@ class Application(tk.Frame):
     def get_files_info(self):
         target_directory = os.getcwd() + '/files'
         entries = os.listdir(target_directory)
+        result = []
         
         for entry in entries:
             entry_full_dir = target_directory + '/' + entry
             entry_size = os.path.getsize(entry_full_dir)
             entry_modified = datetime.datetime.fromtimestamp(os.path.getmtime(entry_full_dir))
             entry_modified = entry_modified.strftime("%d/%m/%y")
-            print(entry_full_dir)
-            print(entry_size)
-            print(entry_modified)
+            entry_name, entry_type = entry.split('.')
+            result.append([entry_name, entry_type, entry_size, entry_modified])
+        
+        return result
+
+    def get_connection_message_for_ft(self, files):
+        message = ""
+
+        for file_info in files:
+            for file_data in file_info:
+                message = f"{message}{file_data},"
+            message = message + '\n'
+
+        return message
+        
 
     def connect_to_ft(self):
         entry_line = self.ft_server_entry.get()
@@ -51,10 +64,24 @@ class Application(tk.Frame):
             self.socket.bind(('', CLIENT_PORT))
 
             try:
-                self.get_files_info()
-
                 self.socket.connect((FILE_TRACKER_IP, int(FILE_TRACKER_PORT)))
                 self.socket.send("HELLO".encode())
+
+                data = self.socket.recv(1024).decode("utf-8")
+                print(f"Recieved: {data}\n Length: {len(data)}")
+
+                if data == "HI":
+                    files = self.get_files_info()
+                    message_to_ft = self.get_connection_message_for_ft(files)
+                    self.socket.send(message_to_ft.encode())
+                    self.ft_connection_message['text'] = "Connected to FT Server"
+                    self.ft_connection_message['fg'] = "green"
+                    self.ft_server_connection_button['state'] = "disabled"
+
+                else:
+                    print("Not a HI message")
+
+
             except:
                 self.socket.close()
                 print("Socket is closed")
@@ -67,6 +94,7 @@ class Application(tk.Frame):
 
 
     def disconnect_from_ft(self):
+        
         pass
 
     def build_ft_server_widgets(self):
@@ -88,7 +116,7 @@ class Application(tk.Frame):
             self.ft_back_frame, text="Disconnect", command=self.disconnect_from_ft)
         self.ft_server_disconnect_button.grid(row=1, column=1)
 
-        self.ft_connection_message = tk.Label(self.ft_back_frame, text="")
+        self.ft_connection_message = tk.Label(self.ft_back_frame, text="No connection")
         self.ft_connection_message.grid(row=2, column=0, columnspan=2)
 
         self.first_separator = ttk.Separator(

@@ -1,9 +1,21 @@
 import socket
 import os
 
+HELLO_MESSAGE = "HELLO"
+HELLO_MESSAGE_RESPONSE = "HI"
+
+db = dict() # Create empty dictionary (tuple -> list[int])
+
+
+def deserialize_files(files):
+    files = files.split('\n')
+    result = []
+    for file_config in files:
+        result.append(file_config.split(','))
+    return result[:-1]
+
 
 def process_connection(conn, addr):
-    print("Connected by ", addr)
     while conn:
         data = conn.recv(1024)
         if not data or len(data) == 0:
@@ -11,7 +23,30 @@ def process_connection(conn, addr):
             break
 
         data = data.decode("utf-8")
-        print("Recieved data: ", data)
+        print(f"Recieved data: {data} from: {addr}")
+
+        if data == "HELLO":
+            conn.send(HELLO_MESSAGE_RESPONSE.encode())
+            files = conn.recv(1024).decode("utf-8")
+            
+            files_to_store = deserialize_files(files)
+
+            if (len(files_to_store) > 0):
+                print(f"{len(files_to_store)} file(-s) from {addr} has been stored")
+                db[addr] = files_to_store
+            else:
+                print(f"No data from {addr}, not allowing to enter FT Server")
+
+            conn.close()
+            break
+            
+
+        else:
+            #TODO(ginet) respond to other messages
+            print("Not a HELLO message")
+            conn.close()
+            break
+
 
 def main():
     print("Launching File Tracker(FT) Server")
@@ -28,11 +63,11 @@ def main():
 
     hostname = socket.gethostname()
     ip_address = socket.gethostbyname(hostname)
-    print("===========================")
+    print("=============================")
     print(f"IP Address: {ip_address}")
     print(f"Port: {port_number}")
-    print("\nPlease use the information above to connect to FT Server")
-    print("===========================")
+    print("Please use the information above to connect to FT Server")
+    print("=============================")
 
     try:
         while True:
@@ -44,7 +79,7 @@ def main():
 
         s.close()
 
-    except:
+    except KeyboardInterrupt:
         s.close()
         print("Socket is closed")
     
