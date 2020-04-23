@@ -51,6 +51,12 @@ def process_bye_message(conn, addr):
 
 def process_search_message(conn, addr, data):
     file_name = data[7:] # removes first part of the message ("SEARCH:")
+
+    if not addr in db:
+        conn.close()
+        print(f"No data from {addr}, not allowing search FT Server data")
+        return
+
     files_to_send = []
     for key in db.keys():
         entry = db[key]

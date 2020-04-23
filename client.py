@@ -67,6 +67,7 @@ class ListeningThread(threading.Thread):
 
             self.socket.close()
         except KeyboardInterrupt:
+            self.stop()
             self.socket.close()
 
         print("Thread is terminated")
@@ -205,7 +206,7 @@ class Application(tk.Frame):
                     self.ft_server_connection_button['state'] = "disabled"
                     self.ft_server_disconnect_button['state'] = "normal"
                 else:
-                    print("Not a HI message")
+                    self.write_to_connection_message("No files are recieved by FT Server, please add some to files folder", "black")
                 
                 self.socket.close()
                 self.listening_thread = ListeningThread(self.socket, self.CLIENT_PORT, self.control_flag)
@@ -467,6 +468,11 @@ class Application(tk.Frame):
             self.socket.send(f"SEARCH:{file_name}".encode())
 
             data = self.socket.recv(1024).decode("utf-8")
+
+            if not data:
+                self.write_to_server_message(f"No reoponse. Please share files to make a search")
+                pass
+
             print(
                 f"Recieved: {data} from: {self.FILE_TRACKER_IP}:{self.FILE_TRACKER_PORT}")
 
