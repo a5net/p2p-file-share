@@ -1,6 +1,9 @@
 import socket
 import os
 
+from _thread import start_new_thread
+import threading
+
 HELLO_MESSAGE = "HELLO"
 HELLO_MESSAGE_RESPONSE = "HI"
 
@@ -21,9 +24,57 @@ def append_ip_and_port(files, addr):
         file.append(str(addr[1]))
 
 
+def process_hello_message(conn, addr):
+    conn.send(HELLO_MESSAGE_RESPONSE.encode())
+    files = conn.recv(1024).decode("utf-8")
+
+    files_to_store = deserialize_files(files)
+
+    if (len(files_to_store) > 0):
+        append_ip_and_port(files_to_store, addr)
+        print(f"{len(files_to_store)} file(-s) from {addr} has been stored")
+        db[addr] = files_to_store
+    else:
+        print(f"No data from {addr}, not allowing to enter FT Server")
+
+    conn.close()
+
+
+def process_bye_message(conn, addr):
+    result = db.pop(addr, None)
+    if result:
+        print(f"Entry {addr} removed from storage")
+    else:
+        print(f"Entry {addr} is not found in storage")
+    conn.close()
+
+
+def process_search_message(conn, addr, data):
+    file_name = data[7:] # removes first part of the message ("SEARCH:")
+    files_to_send = []
+    for key in db.keys():
+        entry = db[key]
+        for file_data in entry:
+            print(f"File Data: {file_data}")
+            if file_name in file_data:
+                files_to_send.append(file_data)
+
+    if len(files_to_send) == 0:
+        conn.send("NOT FOUND".encode())
+    else:
+        message = "FOUND:"
+        for file_info in files_to_send:
+            print(file_info)
+            file_data = ",".join(file_info)
+            message = f"{message}{file_data}\n"
+        conn.send(message.encode())
+    conn.close()
+
+
 def process_connection(conn, addr):
     while conn:
         data = conn.recv(1024)
+
         if not data or len(data) == 0:
             print("No data")
             break
@@ -32,57 +83,13 @@ def process_connection(conn, addr):
         print(f"Recieved data: {data} from: {addr}")
 
         if data.startswith("HELLO"):
-            conn.send(HELLO_MESSAGE_RESPONSE.encode())
-            files = conn.recv(1024).decode("utf-8")
-
-            files_to_store = deserialize_files(files)
-
-            if (len(files_to_store) > 0):
-                append_ip_and_port(files_to_store, addr)
-                print(f"{len(files_to_store)} file(-s) from {addr} has been stored")
-                db[addr] = files_to_store
-            else:
-                print(f"No data from {addr}, not allowing to enter FT Server")
-
-            conn.close()
-            break
+            process_hello_message(conn, addr)
         elif data.startswith("BYE"):
-            result = db.pop(addr, None)
-            if result:
-                print(f"Entry {addr} removed from storage")
-            else:
-                print(f"Entry {addr} is not found in storage")
-            conn.close()
-            break
+            process_bye_message(conn, addr)
         elif data.startswith("SEARCH"):
-            file_name = data[7:]
-
-            files_to_send = []
-            for key in db.keys():
-                entry = db[key]
-                for file_data in entry:
-                    print(f"File Data: {file_data}")
-                    if file_name in file_data:
-                        files_to_send.append(file_data)
-            
-            if len(files_to_send) == 0:
-                conn.send("NOT FOUND".encode())
-            else:
-                message = "FOUND:"
-
-                for file_info in files_to_send:
-                    print(file_info)
-                    file_data = ",".join(file_info)
-                    message = f"{message}{file_data}\n"
-                
-                conn.send(message.encode())
-            conn.close()
-            break
-        else:
-            # TODO(ginet) respond to other messages
-            print("Not a HELLO message")
-            conn.close()
-            break
+            process_search_message(conn, addr, data)
+        
+        break
 
 
 def main():
@@ -111,11 +118,8 @@ def main():
             print("Waiting for connection...")
             s.listen()
             conn, addr = s.accept()
-            with conn:
-                process_connection(conn, addr)
-
+            start_new_thread(process_connection, (conn, addr,))
         s.close()
-
     except KeyboardInterrupt:
         s.close()
         print("Socket is closed")
